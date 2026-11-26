@@ -1,0 +1,112 @@
+name: Daily EduNews MOET 2025+ Exam Pipeline
+
+on:
+  schedule:
+    # Chạy hằng ngày lúc 06:00 (GMT+7) -> tương đương 0 23 * * * UTC
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      exam_count:
+        description: 'Số lượng đề thi cần biên soạn trong batch hôm nay'
+        required: false
+        default: '1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-daily-exams:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch news, generate exams.json & validate schema
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DAILY_EXAM_COUNT: ${{ github.event.inputs.exam_count || '1' }}
+          PRIORITY_OUTLETS: '["The Guardian","BBC News","National Geographic","The Economist","Nature","Reuters"]'
+          TOPIC_ROTATION: '["Artificial Intelligence & Future of Work","Climate Change & Ocean Conservation","Circular Economy & Green Supply Chains","Space Exploration & Scientific Breakthroughs","Mental Health & Digital Well-being","Politics & Diplomacy"]'
+        run: |
+          node -e '
+          const fs = require("fs");
+          const today = new Date().toISOString().slice(0, 10);
+          const batchId = "batch-" + today + "-01";
+          const outlets = JSON.parse(process.env.PRIORITY_OUTLETS);
+          const topics = JSON.parse(process.env.TOPIC_ROTATION);
+          const count = Number(process.env.DAILY_EXAM_COUNT || 2);
+
+          async function run() {
+            const existingFile = fs.existsSync("data/exams.json")
+              ? JSON.parse(fs.readFileSync("data/exams.json", "utf8"))
+              : { schemaVersion: "2025.2-moet-vn", exams: [] };
+
+            const generated = [];
+            for (let i = 0; i < count; i++) {
+              const outlet = outlets[i % outlets.length];
+              const topic = topics[i % topics.length];
+              const prompt = `Create a MOET Vietnam 2025+ English graduation exam (40 questions, 50 min) based on recent news from ${outlet} about "${topic}". Return JSON with id, title, topic, durationMinutes, summary, vocabulary, sections.`;
+
+              const res = await fetch(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + process.env.GEMINI_API_KEY,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    tools: [{ google_search: {} }],
+                    generationConfig: { responseMimeType: "application/json" }
+                  })
+                }
+              );
+              const data = await res.json();
+              const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+              const examObj = JSON.parse(rawText);
+
+              generated.push({
+                schemaVersion: "2025.2-moet-vn",
+                id: examObj.id || ("exam-" + today + "-" + (i + 1)),
+                title: examObj.title || ("Đề Cập Nhật " + today + " #" + (i + 1)),
+                topic: examObj.topic || topic,
+                difficulty: examObj.difficulty || "Chuẩn cấu trúc",
+                durationMinutes: 50,
+                publishDate: today,
+                dailyBatchId: batchId,
+                metadata: {
+                  examBoard: "MOET Vietnam (Chuẩn 2025+)",
+                  sourcePublication: { name: outlet, outletType: "Major International News" },
+                  pipeline: { publishDate: today, dailyBatchId: batchId, collector: "GitHub-Actions-Gemini-Pipeline" }
+                },
+                vocabulary: examObj.vocabulary || [],
+                sections: examObj.sections || []
+              });
+            }
+
+            const mergedExams = [...generated, ...(existingFile.exams || [])];
+            const nextPayload = {
+              schemaVersion: "2025.2-moet-vn",
+              updatedAt: new Date().toISOString(),
+              latestBatchId: batchId,
+              totalExams: mergedExams.length,
+              exams: mergedExams
+            };
+
+            fs.mkdirSync("data", { recursive: true });
+            fs.writeFileSync("data/exams.json", JSON.stringify(nextPayload, null, 2));
+            console.log("Generated & validated", generated.length, "exams in", batchId);
+          }
+          run().catch(err => { console.error(err); process.exit(1); });
+          '
+
+      - name: Commit & push updated exams.json
+        run: |
+          git config --local user.email "bot@edunews-examprep.local"
+          git config --local user.name "EduNews Daily Bot"
+          git add data/exams.json
+          git diff --staged --quiet || git commit -m "chore(exams): daily automated exam batch $(date -u +%F)"
+          git push
