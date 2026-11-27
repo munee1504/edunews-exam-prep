@@ -1,9 +1,33 @@
 {
   "schemaVersion": "2025.2-moet-vn",
-  "updatedAt": "2026-11-26T15:08:50.764Z",
-  "latestBatchId": "batch-2026-11-26-01",
-  "totalExams": 1,
+  "updatedAt": "2026-11-27T04:52:20.390Z",
+  "latestBatchId": "batch-2026-11-27-01",
+  "totalExams": 2,
   "exams": [
+    {
+      "schemaVersion": "2025.2-moet-vn",
+      "id": "exam-2026-11-27-1",
+      "title": "Đề Cập Nhật 2026-11-27 #1",
+      "topic": "Artificial Intelligence & Future of Work",
+      "difficulty": "Chuẩn cấu trúc",
+      "durationMinutes": 50,
+      "publishDate": "2026-11-27",
+      "dailyBatchId": "batch-2026-11-27-01",
+      "metadata": {
+        "examBoard": "MOET Vietnam (Chuẩn 2025+)",
+        "sourcePublication": {
+          "name": "The Guardian",
+          "outletType": "Major International News"
+        },
+        "pipeline": {
+          "publishDate": "2026-11-27",
+          "dailyBatchId": "batch-2026-11-27-01",
+          "collector": "GitHub-Actions-Gemini-Pipeline"
+        }
+      },
+      "vocabulary": [],
+      "sections": []
+    },
     {
       "schemaVersion": "2025.2-moet-vn",
       "id": "exam-2026-11-26-1",
